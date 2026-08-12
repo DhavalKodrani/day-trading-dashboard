@@ -129,6 +129,64 @@
     footer.note { color: var(--muted); font-size: 12px; margin-top: 18px; line-height: 1.6; }
     footer.note code { background: var(--panel-2); padding: 1px 6px; border-radius: 6px; }
     .empty { padding: 40px; text-align: center; color: var(--muted); }
+
+    /* Stacked 3-day cell (Close / Volume) */
+    .triple { display: inline-flex; flex-direction: column; gap: 3px; align-items: flex-end; }
+    .triple .r { display: flex; gap: 12px; justify-content: flex-end; align-items: baseline; white-space: nowrap; }
+    .triple .r .d { color: var(--muted); font-size: 11px; min-width: 46px; text-align: left; letter-spacing: .02em; }
+    .triple .r.primary .v { font-weight: 700; font-size: 14px; }
+    .triple .r.sub { font-size: 12.5px; }
+    .triple .r.sub .v { color: var(--muted); }
+
+    /* Always-visible sort toolbar (drives the same sort state as the headers) */
+    .toolbar {
+      display: flex; align-items: center; gap: 10px;
+      margin: 0 2px 12px; flex-wrap: wrap;
+    }
+    .toolbar .lbl { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+    .toolbar select {
+      background: var(--panel-2); color: var(--text);
+      border: 1px solid var(--border); border-radius: 10px;
+      padding: 8px 12px; font-size: 14px; font-weight: 600; cursor: pointer;
+    }
+    .toolbar .dirbtn {
+      background: var(--panel-2); color: var(--accent);
+      border: 1px solid var(--border); border-radius: 10px;
+      width: 38px; height: 38px; font-size: 14px; cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .toolbar .dirbtn:hover, .toolbar select:hover { border-color: var(--accent); }
+
+    /* ----- Mobile: collapse the table into readable per-stock cards ----- */
+    @media (max-width: 680px) {
+      body { padding: 22px 12px 48px; }
+      .table-scroll { overflow: visible; }
+      table { min-width: 0; width: 100%; }
+      thead { display: none; }                 /* sort via the toolbar instead */
+      table, tbody, tr, td { display: block; width: auto; }
+      tbody tr {
+        background: var(--panel-2);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        margin: 12px; padding: 4px 0;
+      }
+      tbody tr:hover { background: var(--panel-2); }
+      tbody td {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 16px; text-align: right; padding: 10px 16px; border: none;
+        border-bottom: 1px solid var(--border);
+      }
+      tbody tr td:last-child { border-bottom: none; }
+      tbody td::before {
+        content: attr(data-label);
+        color: var(--muted); font-size: 11px; font-weight: 700;
+        letter-spacing: .05em; text-transform: uppercase; text-align: left;
+      }
+      td.sym { font-size: 16px; }
+      td.name { color: var(--muted); }
+      td.center { justify-content: space-between; }
+      .empty { display: block; }
+    }
   </style>
 </head>
 <body>
@@ -141,10 +199,16 @@
       Stocks where the <strong>9-day simple moving average crossed above the 20-day simple moving average today</strong>
       &mdash; a classic bullish "golden cross" day-trading signal. Each row shows the latest date, current volume,
       and closing prices for the last three trading days. The trend arrow is <span style="color:var(--up)">green</span>
-      when momentum is up and <span style="color:var(--down)">red</span> when it turns down. Click any column header to sort.
+      when momentum is up and <span style="color:var(--down)">red</span> when it turns down. Sort by any column using the control below (or the headers on wider screens).
     </p>
 
     <div class="stats" id="stats"></div>
+
+    <div class="toolbar">
+      <span class="lbl">Sort</span>
+      <select id="sortSel" aria-label="Sort column"></select>
+      <button id="sortDir" class="dirbtn" title="Toggle sort direction" aria-label="Toggle sort direction">▼</button>
+    </div>
 
     <div class="card">
       <div class="table-scroll">
@@ -293,8 +357,9 @@
         const last = closes.length - 1;
         out.push({
           sym: cfg.sym, name: cfg.name,
-          date: dates[last], volume: volumes[last],
+          date: dates[last],
           close0: closes[last], close1: closes[last - 1], close2: closes[last - 2],
+          vol0: volumes[last], vol1: volumes[last - 1], vol2: volumes[last - 2],
           d1: dates[last - 1], d2: dates[last - 2],
           up: trendUp(closes)
         });
@@ -305,12 +370,15 @@
     // ---- Load rows from the live scan output (signals.json) ----
     const parseISO = s => new Date(s + "T00:00:00");
     function rowsFromSignals(json) {
+      const pick = (a, b) => (a === undefined || a === null ? b : a);
       return (json.signals || []).map(s => ({
         sym: s.sym,
         name: s.name || "",
         date: parseISO(s.date),
-        volume: s.volume,
         close0: s.close0, close1: s.close1, close2: s.close2,
+        vol0: pick(s.vol0, s.volume),
+        vol1: pick(s.vol1, s.volume),
+        vol2: pick(s.vol2, s.volume),
         d1: parseISO(s.d1), d2: parseISO(s.d2),
         up: !!s.up
       }));
@@ -331,25 +399,37 @@
     let COLS = [];
     function buildColumns() {
       dLbl = rows.length ? { d1: fmtDate(rows[0].d1), d2: fmtDate(rows[0].d2) } : { d1: "-1d", d2: "-2d" };
+      // Merged, mobile-friendly layout: the three daily closes and the three
+      // daily volumes each collapse into one stacked column. Sorting a merged
+      // column uses today's value (close0 / vol0). The date lives in each cell
+      // and the header subtitle, so a standalone Date column is no longer needed.
       COLS = [
-      { key: "sym",    label: "Symbol",             type: "str", cls: "txt" },
-      { key: "name",   label: "Company",            type: "str", cls: "txt" },
-      { key: "up",     label: "Trend",              type: "num", cls: "center" },
-      { key: "date",   label: "Date",               type: "date" },
-      { key: "volume", label: "Current Volume",     type: "num" },
-      { key: "close0", label: "Close (Today)",      type: "num" },
-      { key: "close1", label: "Close (" + dLbl.d1 + ")", type: "num" },
-      { key: "close2", label: "Close (" + dLbl.d2 + ")", type: "num" }
+        { key: "sym",    label: "Symbol",         type: "str", cls: "txt" },
+        { key: "name",   label: "Company",        type: "str", cls: "txt" },
+        { key: "up",     label: "Trend",          type: "num", cls: "center" },
+        { key: "close0", label: "Close · 3-day",  type: "num", kind: "close3" },
+        { key: "vol0",   label: "Volume · 3-day", type: "num", kind: "vol3" }
       ];
     }
 
-    let sortKey = "volume";
-    let sortDir = -1; // -1 desc, 1 asc
+    let sortKey = "vol0"; // default: today's volume, high → low
+    let sortDir = -1;     // -1 desc, 1 asc
 
     function valueFor(row, col) {
       if (col.type === "date") return row[col.key].getTime();
       if (col.key === "up") return row.up ? 1 : 0;
       return row[col.key];
+    }
+
+    // Single entry point for a sort request from either a header or the toolbar.
+    function applySort(key) {
+      if (key === sortKey) { sortDir *= -1; }
+      else {
+        sortKey = key;
+        const col = COLS.find(c => c.key === key);
+        sortDir = col.type === "str" ? 1 : -1; // strings A→Z, numbers high→low
+      }
+      render();
     }
 
     function renderHead() {
@@ -358,22 +438,20 @@
         const active = c.key === sortKey;
         const ariaSort = active ? (sortDir === 1 ? "ascending" : "descending") : "none";
         const glyph = active ? (sortDir === 1 ? "▲" : "▼") : "▲";
-        const cls = (c.cls || "") + (c.key === "sym" ? "" : "");
-        return `<th data-key="${c.key}" class="${cls}" aria-sort="${ariaSort}" title="Sort by ${c.label}">`
+        return `<th data-key="${c.key}" class="${c.cls || ''}" aria-sort="${ariaSort}" title="Sort by ${c.label}">`
              + `${c.label}<span class="arrow">${glyph}</span></th>`;
       }).join("");
       head.querySelectorAll("th").forEach(th => {
-        th.addEventListener("click", () => {
-          const key = th.getAttribute("data-key");
-          if (key === sortKey) { sortDir *= -1; }
-          else {
-            sortKey = key;
-            const col = COLS.find(c => c.key === key);
-            sortDir = col.type === "str" ? 1 : -1; // strings A→Z, numbers high→low
-          }
-          render();
-        });
+        th.addEventListener("click", () => applySort(th.getAttribute("data-key")));
       });
+    }
+
+    // Keep the always-visible toolbar in sync with the current sort state.
+    function renderToolbar() {
+      const sel = document.getElementById("sortSel");
+      sel.innerHTML = COLS.map(c => `<option value="${c.key}">${c.label}</option>`).join("");
+      sel.value = sortKey;
+      document.getElementById("sortDir").textContent = sortDir === 1 ? "▲" : "▼";
     }
 
     function renderBody() {
@@ -391,19 +469,31 @@
         return;
       }
 
+      // Stacked 3-day cell: today's value on top (bold), the two prior days below.
+      const triple = trio => `<div class="triple">` + trio.map((row, i) =>
+        `<div class="r ${i === 0 ? 'primary' : 'sub'}"><span class="d">${row[0]}</span><span class="v">${row[1]}</span></div>`
+      ).join("") + `</div>`;
+
       body.innerHTML = sorted.map(r => {
         const trend = r.up
           ? `<span class="trend up"><span class="glyph">▲</span> Up</span>`
           : `<span class="trend down"><span class="glyph">▼</span> Down</span>`;
+        const closes = triple([
+          [fmtDate(r.date), "$" + fmtNum(r.close0)],
+          [fmtDate(r.d1),   "$" + fmtNum(r.close1)],
+          [fmtDate(r.d2),   "$" + fmtNum(r.close2)]
+        ]);
+        const vols = triple([
+          [fmtDate(r.date), fmtVol(r.vol0)],
+          [fmtDate(r.d1),   fmtVol(r.vol1)],
+          [fmtDate(r.d2),   fmtVol(r.vol2)]
+        ]);
         return `<tr>
-          <td class="sym">${r.sym}</td>
-          <td class="name">${r.name}</td>
-          <td class="center">${trend}</td>
-          <td>${fmtFullDate(r.date)}</td>
-          <td>${fmtVol(r.volume)}</td>
-          <td>$${fmtNum(r.close0)}</td>
-          <td>$${fmtNum(r.close1)}</td>
-          <td>$${fmtNum(r.close2)}</td>
+          <td class="sym"    data-label="Symbol">${r.sym}</td>
+          <td class="name"   data-label="Company">${r.name}</td>
+          <td class="center" data-label="Trend">${trend}</td>
+          <td data-label="Close · 3-day">${closes}</td>
+          <td data-label="Volume · 3-day">${vols}</td>
         </tr>`;
       }).join("");
     }
@@ -439,7 +529,18 @@
       }
     }
 
-    function render() { buildColumns(); renderHead(); renderBody(); }
+    function render() { buildColumns(); renderHead(); renderToolbar(); renderBody(); }
+
+    // Toolbar controls (work on every screen size, so sorting survives when the
+    // table headers collapse into cards on mobile).
+    function wireToolbar() {
+      document.getElementById("sortSel").addEventListener("change", e => {
+        if (e.target.value !== sortKey) applySort(e.target.value); else render();
+      });
+      document.getElementById("sortDir").addEventListener("click", () => {
+        sortDir *= -1; render();
+      });
+    }
 
     async function init() {
       let meta = { source: "sample" };
@@ -447,8 +548,7 @@
         const resp = await fetch("./signals.json", { cache: "no-store" });
         if (resp.ok) {
           const json = await resp.json();
-          const live = rowsFromSignals(json);
-          rows = live;
+          rows = rowsFromSignals(json);
           meta = { source: "live", universe_scanned: json.universe_scanned, generated_at: json.generated_at };
           asOfDate = json.as_of ? parseISO(json.as_of) : TODAY;
         } else {
@@ -459,6 +559,7 @@
         asOfDate = TODAY;
         meta = { source: "sample" };
       }
+      wireToolbar();
       renderStats(meta);
       render();
     }

@@ -185,7 +185,8 @@ def evaluate(df: pd.DataFrame, cfg: dict) -> Optional[dict]:
     return {
         "date": d[-1], "d1": d[-2], "d2": d[-3],
         "close0": c[-1], "close1": c[-2], "close2": c[-3],
-        "volume": v[-1],
+        "vol0": v[-1], "vol1": v[-2], "vol2": v[-3],
+        "volume": v[-1],   # kept for backward-compat (today's volume)
         "up": trend_up,
     }
 
