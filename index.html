@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day Trading Dashboard</title>
+  <meta name="description" content="Single-page day trading dashboard: stocks where the 9-day SMA crossed above the 20-day SMA today, with last-three-day close/volume and sortable columns." />
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #131a2e;
+      --panel-2: #1a2340;
+      --border: #26304f;
+      --text: #e8ecf5;
+      --muted: #93a0bd;
+      --accent: #6c8cff;
+      --up: #22c55e;
+      --down: #ef4444;
+      --shadow: 0 10px 30px rgba(0,0,0,.35);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: radial-gradient(1200px 600px at 80% -10%, #1a2547 0%, transparent 60%), var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 32px 20px 60px;
+    }
+    .wrap { max-width: 1100px; margin: 0 auto; }
+    header.page {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 12px 18px;
+      margin-bottom: 6px;
+    }
+    h1 {
+      font-size: clamp(24px, 4vw, 34px);
+      margin: 0;
+      letter-spacing: -0.02em;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--up); box-shadow: 0 0 10px var(--up); }
+    .subtitle { color: var(--muted); margin: 6px 0 22px; font-size: 14px; line-height: 1.5; max-width: 720px; }
+    .subtitle strong { color: var(--text); }
+
+    .stats { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
+    .stat {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px 18px;
+      min-width: 150px;
+    }
+    .stat .k { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+    .stat .v { font-size: 22px; font-weight: 700; margin-top: 4px; }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .table-scroll { overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; min-width: 820px; }
+    thead th {
+      position: sticky;
+      top: 0;
+      background: var(--panel-2);
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      text-align: right;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+    }
+    thead th:first-child, thead th.txt { text-align: left; }
+    thead th.center { text-align: center; }
+    thead th:hover { color: var(--text); }
+    thead th .arrow { opacity: .35; font-size: 10px; margin-left: 6px; }
+    thead th[aria-sort="ascending"] .arrow,
+    thead th[aria-sort="descending"] .arrow { opacity: 1; color: var(--accent); }
+
+    tbody td {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+      font-size: 14px;
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover { background: rgba(108,140,255,.06); }
+    td.sym { text-align: left; font-weight: 700; letter-spacing: .02em; }
+    td.name { text-align: left; color: var(--muted); font-weight: 400; }
+    td.center { text-align: center; }
+
+    .trend {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 13px;
+    }
+    .trend.up   { color: var(--up);   background: rgba(34,197,94,.12); }
+    .trend.down { color: var(--down); background: rgba(239,68,68,.12); }
+    .trend .glyph { font-size: 14px; line-height: 1; }
+
+    .muted { color: var(--muted); }
+    footer.note { color: var(--muted); font-size: 12px; margin-top: 18px; line-height: 1.6; }
+    footer.note code { background: var(--panel-2); padding: 1px 6px; border-radius: 6px; }
+    .empty { padding: 40px; text-align: center; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="page">
+      <h1>Day Trading Dashboard</h1>
+      <span class="badge"><span class="dot"></span> Bullish SMA crossover · today</span>
+    </header>
+    <p class="subtitle">
+      Stocks where the <strong>9-day simple moving average crossed above the 20-day simple moving average today</strong>
+      &mdash; a classic bullish "golden cross" day-trading signal. Each row shows the latest date, current volume,
+      and closing prices for the last three trading days. The trend arrow is <span style="color:var(--up)">green</span>
+      when momentum is up and <span style="color:var(--down)">red</span> when it turns down. Click any column header to sort.
+    </p>
+
+    <div class="stats" id="stats"></div>
+
+    <div class="card">
+      <div class="table-scroll">
+        <table id="tbl">
+          <thead>
+            <tr id="head"></tr>
+          </thead>
+          <tbody id="body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <footer class="note" id="asof"></footer>
+    <footer class="note">
+      Data note: prices are a deterministic sample set and all indicators (SMA-9, SMA-20, the crossover filter, trend,
+      and last-three-day close/volume) are computed in the browser. To go live, replace <code>buildSeries()</code> so it
+      returns real daily closes/volumes from a market-data API &mdash; the crossover filter and rendering logic are unchanged.
+    </footer>
+  </div>
+
+  <script>
+  (function () {
+    "use strict";
+
+    // ---- Deterministic PRNG so the sample dataset is reproducible ----
+    function mulberry32(a) {
+      return function () {
+        a |= 0; a = (a + 0x6D2B79F5) | 0;
+        let t = Math.imul(a ^ (a >>> 15), 1 | a);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    // ---- Trading calendar: last N weekdays ending today ----
+    const TODAY = new Date(2026, 7, 12); // 2026-08-12 (month is 0-indexed)
+    function lastTradingDays(n, endDate) {
+      const out = [];
+      const d = new Date(endDate);
+      while (out.length < n) {
+        const wd = d.getDay();
+        if (wd !== 0 && wd !== 6) out.push(new Date(d));
+        d.setDate(d.getDate() - 1);
+      }
+      return out.reverse(); // chronological
+    }
+
+    // ---- Universe: symbol, name, seed, and whether it crosses up today ----
+    const UNIVERSE = [
+      { sym: "NVDA", name: "NVIDIA Corp",        seed: 101, cross: true  },
+      { sym: "AMD",  name: "Advanced Micro Dev", seed: 202, cross: true  },
+      { sym: "TSLA", name: "Tesla Inc",          seed: 303, cross: true  },
+      { sym: "AAPL", name: "Apple Inc",          seed: 404, cross: true  },
+      { sym: "SHOP", name: "Shopify Inc",        seed: 505, cross: true  },
+      { sym: "PLTR", name: "Palantir Tech",      seed: 606, cross: true  },
+      { sym: "META", name: "Meta Platforms",     seed: 707, cross: false }, // no cross today (excluded)
+      { sym: "MSFT", name: "Microsoft Corp",     seed: 808, cross: false }, // no cross today (excluded)
+      { sym: "COIN", name: "Coinbase Global",    seed: 909, cross: true  },
+      { sym: "SOFI", name: "SoFi Technologies",  seed: 111, cross: true  }
+    ];
+
+    const TOTAL_DAYS = 25;   // enough history for a 20-day SMA plus prior day
+    const dates = lastTradingDays(TOTAL_DAYS, TODAY);
+
+    // Generate a close series from explicit params: flat/soft for the early
+    // portion, then a linear rally over the final `rallyDays` sessions.
+    function genCloses(cfg, rallyDays, rallySlope) {
+      const rnd = mulberry32(cfg.seed);
+      const base = 40 + Math.floor(rnd() * 260);
+      const closes = [];
+      let price = base;
+      const rallyStart = TOTAL_DAYS - rallyDays;
+      for (let i = 0; i < TOTAL_DAYS; i++) {
+        let drift;
+        if (cfg.cross) {
+          drift = i < rallyStart ? -0.15 + (rnd() - 0.5) * 0.3   // soft/flat early
+                                 :  rallySlope + (rnd() - 0.5) * 0.2; // rally late
+        } else {
+          drift = 0.5 + (rnd() - 0.5) * 0.5; // steady uptrend -> crossed long ago
+        }
+        price = Math.max(2, price + drift);
+        closes.push(+price.toFixed(2));
+      }
+      return closes;
+    }
+
+    // Build closes (+ matching volumes). For "cross" tickers, search rally
+    // params so SMA-9 crosses above SMA-20 exactly today; deterministic per seed.
+    function buildSeries(cfg) {
+      let closes;
+      if (cfg.cross) {
+        let found = null;
+        outer:
+        for (let rallyDays = 6; rallyDays <= 14 && !found; rallyDays++) {
+          for (let slope = 0.6; slope <= 4.0; slope += 0.1) {
+            const c = genCloses(cfg, rallyDays, +slope.toFixed(1));
+            if (crossedUpToday(c)) { found = c; break outer; }
+          }
+        }
+        closes = found || genCloses(cfg, 8, 1.6);
+      } else {
+        closes = genCloses(cfg, 0, 0);
+      }
+
+      // Volumes: swell on the final rally sessions for cross tickers.
+      const rnd = mulberry32(cfg.seed ^ 0x9e3779b9);
+      const volumes = closes.map((_, i) => {
+        const rally = cfg.cross && i >= TOTAL_DAYS - 8;
+        const vBase = 4_000_000 + Math.floor(rnd() * 9_000_000);
+        return Math.floor(vBase * (rally ? 1.6 + rnd() : 1));
+      });
+      return { closes, volumes };
+    }
+
+    function sma(arr, period, endIdx) {
+      if (endIdx + 1 < period) return null;
+      let s = 0;
+      for (let i = endIdx - period + 1; i <= endIdx; i++) s += arr[i];
+      return s / period;
+    }
+
+    // A bullish crossover TODAY = SMA9<=SMA20 yesterday AND SMA9>SMA20 today.
+    function crossedUpToday(closes) {
+      const last = closes.length - 1;
+      const s9t = sma(closes, 9, last),  s20t = sma(closes, 20, last);
+      const s9y = sma(closes, 9, last-1), s20y = sma(closes, 20, last-1);
+      if ([s9t, s20t, s9y, s20y].some(v => v === null)) return false;
+      return s9y <= s20y && s9t > s20t;
+    }
+
+    // Trend for the arrow: sign of SMA9 slope over the last 3 sessions.
+    function trendUp(closes) {
+      const last = closes.length - 1;
+      return sma(closes, 9, last) >= sma(closes, 9, last - 3);
+    }
+
+    // ---- Assemble rows for stocks that crossed up today ----
+    const rows = [];
+    for (const cfg of UNIVERSE) {
+      const { closes, volumes } = buildSeries(cfg);
+      if (!crossedUpToday(closes)) continue;
+      const last = closes.length - 1;
+      rows.push({
+        sym: cfg.sym,
+        name: cfg.name,
+        date: dates[last],
+        volume: volumes[last],
+        close0: closes[last],       // today
+        close1: closes[last - 1],   // yesterday
+        close2: closes[last - 2],   // 2 days ago
+        d1: dates[last - 1],
+        d2: dates[last - 2],
+        up: trendUp(closes)
+      });
+    }
+
+    // ---- Formatting helpers ----
+    const fmtDate = d => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    const fmtFullDate = d => d.toLocaleDateString("en-US", { year:"numeric", month: "short", day: "numeric" });
+    const fmtNum = n => n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const fmtVol = n => n >= 1e6 ? (n/1e6).toFixed(2) + "M" : n.toLocaleString("en-US");
+
+    const dLbl = rows.length ? { d1: fmtDate(rows[0].d1), d2: fmtDate(rows[0].d2) } : { d1: "-1d", d2: "-2d" };
+
+    // ---- Column definitions (every column sortable) ----
+    const COLS = [
+      { key: "sym",    label: "Symbol",             type: "str", cls: "txt" },
+      { key: "name",   label: "Company",            type: "str", cls: "txt" },
+      { key: "up",     label: "Trend",              type: "num", cls: "center" },
+      { key: "date",   label: "Date",               type: "date" },
+      { key: "volume", label: "Current Volume",     type: "num" },
+      { key: "close0", label: "Close (Today)",      type: "num" },
+      { key: "close1", label: "Close (" + dLbl.d1 + ")", type: "num" },
+      { key: "close2", label: "Close (" + dLbl.d2 + ")", type: "num" }
+    ];
+
+    let sortKey = "volume";
+    let sortDir = -1; // -1 desc, 1 asc
+
+    function valueFor(row, col) {
+      if (col.type === "date") return row[col.key].getTime();
+      if (col.key === "up") return row.up ? 1 : 0;
+      return row[col.key];
+    }
+
+    function renderHead() {
+      const head = document.getElementById("head");
+      head.innerHTML = COLS.map(c => {
+        const active = c.key === sortKey;
+        const ariaSort = active ? (sortDir === 1 ? "ascending" : "descending") : "none";
+        const glyph = active ? (sortDir === 1 ? "▲" : "▼") : "▲";
+        const cls = (c.cls || "") + (c.key === "sym" ? "" : "");
+        return `<th data-key="${c.key}" class="${cls}" aria-sort="${ariaSort}" title="Sort by ${c.label}">`
+             + `${c.label}<span class="arrow">${glyph}</span></th>`;
+      }).join("");
+      head.querySelectorAll("th").forEach(th => {
+        th.addEventListener("click", () => {
+          const key = th.getAttribute("data-key");
+          if (key === sortKey) { sortDir *= -1; }
+          else {
+            sortKey = key;
+            const col = COLS.find(c => c.key === key);
+            sortDir = col.type === "str" ? 1 : -1; // strings A→Z, numbers high→low
+          }
+          render();
+        });
+      });
+    }
+
+    function renderBody() {
+      const body = document.getElementById("body");
+      const col = COLS.find(c => c.key === sortKey);
+      const sorted = rows.slice().sort((a, b) => {
+        let va = valueFor(a, col), vb = valueFor(b, col);
+        if (col.type === "str") { va = String(va).toLowerCase(); vb = String(vb).toLowerCase();
+          return va < vb ? -sortDir : va > vb ? sortDir : 0; }
+        return (va - vb) * sortDir;
+      });
+
+      if (!sorted.length) {
+        body.innerHTML = `<tr><td class="empty" colspan="${COLS.length}">No bullish 9/20 SMA crossovers today.</td></tr>`;
+        return;
+      }
+
+      body.innerHTML = sorted.map(r => {
+        const trend = r.up
+          ? `<span class="trend up"><span class="glyph">▲</span> Up</span>`
+          : `<span class="trend down"><span class="glyph">▼</span> Down</span>`;
+        return `<tr>
+          <td class="sym">${r.sym}</td>
+          <td class="name">${r.name}</td>
+          <td class="center">${trend}</td>
+          <td>${fmtFullDate(r.date)}</td>
+          <td>${fmtVol(r.volume)}</td>
+          <td>$${fmtNum(r.close0)}</td>
+          <td>$${fmtNum(r.close1)}</td>
+          <td>$${fmtNum(r.close2)}</td>
+        </tr>`;
+      }).join("");
+    }
+
+    function renderStats() {
+      const el = document.getElementById("stats");
+      const upCount = rows.filter(r => r.up).length;
+      const cards = [
+        { k: "Crossover signals", v: rows.length },
+        { k: "Trending up", v: upCount },
+        { k: "Trending down", v: rows.length - upCount },
+        { k: "As of", v: fmtDate(TODAY) }
+      ];
+      el.innerHTML = cards.map(c => `<div class="stat"><div class="k">${c.k}</div><div class="v">${c.v}</div></div>`).join("");
+      document.getElementById("asof").textContent =
+        "Signals as of " + fmtFullDate(TODAY) + " · " + rows.length + " stock(s) where SMA-9 crossed above SMA-20 today.";
+    }
+
+    function render() { renderHead(); renderBody(); }
+
+    renderStats();
+    render();
+  })();
+  </script>
+</body>
+</html>
