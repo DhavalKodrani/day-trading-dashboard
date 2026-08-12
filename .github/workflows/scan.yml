@@ -1,0 +1,52 @@
+name: Daily SMA crossover scan
+
+# Scans the full US-listed universe for 9/20 SMA bullish crossovers and commits
+# signals.json. Since GitHub Pages serves from main, the commit auto-refreshes
+# the live dashboard.
+
+on:
+  schedule:
+    # 21:30 UTC on weekdays -> after the US market close year-round
+    # (16:00 ET is 20:00 UTC in summer / 21:00 UTC in winter).
+    - cron: "30 21 * * 1-5"
+  workflow_dispatch: {}        # manual "Run workflow" button
+  push:
+    branches: [main]
+    paths: ["screener.py", "requirements.txt", ".github/workflows/scan.yml"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sma-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run screener
+        run: python screener.py
+
+      - name: Commit updated signals.json
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if [[ -n "$(git status --porcelain signals.json)" ]]; then
+            git add signals.json
+            git commit -m "Update crossover signals ($(date -u +%Y-%m-%d))"
+            git push
+          else
+            echo "No change in signals.json."
+          fi

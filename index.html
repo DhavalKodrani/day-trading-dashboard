@@ -135,7 +135,7 @@
   <div class="wrap">
     <header class="page">
       <h1>Day Trading Dashboard</h1>
-      <span class="badge"><span class="dot"></span> Bullish SMA crossover · today</span>
+      <span class="badge" id="source"><span class="dot"></span> Loading…</span>
     </header>
     <p class="subtitle">
       Stocks where the <strong>9-day simple moving average crossed above the 20-day simple moving average today</strong>
@@ -159,9 +159,10 @@
 
     <footer class="note" id="asof"></footer>
     <footer class="note">
-      Data note: prices are a deterministic sample set and all indicators (SMA-9, SMA-20, the crossover filter, trend,
-      and last-three-day close/volume) are computed in the browser. To go live, replace <code>buildSeries()</code> so it
-      returns real daily closes/volumes from a market-data API &mdash; the crossover filter and rendering logic are unchanged.
+      How it works: a Python screener (<code>screener.py</code>) runs on GitHub Actions each weekday after the US close,
+      scans the full US-listed universe (~10k+ symbols via NASDAQ Trader / SEC), computes the 9-day and 20-day SMAs, and
+      writes <code>signals.json</code> with every stock that crossed up that day. This page loads that file. Until the first
+      scan runs it falls back to a built-in sample set so the layout is always demonstrable. Educational tool, not financial advice.
     </footer>
   </div>
 
@@ -281,25 +282,44 @@
       return sma(closes, 9, last) >= sma(closes, 9, last - 3);
     }
 
-    // ---- Assemble rows for stocks that crossed up today ----
-    const rows = [];
-    for (const cfg of UNIVERSE) {
-      const { closes, volumes } = buildSeries(cfg);
-      if (!crossedUpToday(closes)) continue;
-      const last = closes.length - 1;
-      rows.push({
-        sym: cfg.sym,
-        name: cfg.name,
-        date: dates[last],
-        volume: volumes[last],
-        close0: closes[last],       // today
-        close1: closes[last - 1],   // yesterday
-        close2: closes[last - 2],   // 2 days ago
-        d1: dates[last - 1],
-        d2: dates[last - 2],
-        up: trendUp(closes)
-      });
+    // ---- Sample fallback: assemble rows for stocks that crossed up today ----
+    // Used only when signals.json (produced by the daily scan) is unavailable,
+    // so the page still demonstrates correctly before the first live scan.
+    function buildSampleRows() {
+      const out = [];
+      for (const cfg of UNIVERSE) {
+        const { closes, volumes } = buildSeries(cfg);
+        if (!crossedUpToday(closes)) continue;
+        const last = closes.length - 1;
+        out.push({
+          sym: cfg.sym, name: cfg.name,
+          date: dates[last], volume: volumes[last],
+          close0: closes[last], close1: closes[last - 1], close2: closes[last - 2],
+          d1: dates[last - 1], d2: dates[last - 2],
+          up: trendUp(closes)
+        });
+      }
+      return out;
     }
+
+    // ---- Load rows from the live scan output (signals.json) ----
+    const parseISO = s => new Date(s + "T00:00:00");
+    function rowsFromSignals(json) {
+      return (json.signals || []).map(s => ({
+        sym: s.sym,
+        name: s.name || "",
+        date: parseISO(s.date),
+        volume: s.volume,
+        close0: s.close0, close1: s.close1, close2: s.close2,
+        d1: parseISO(s.d1), d2: parseISO(s.d2),
+        up: !!s.up
+      }));
+    }
+
+    // ---- Mutable state (populated by init once data is chosen) ----
+    let rows = [];
+    let asOfDate = TODAY;
+    let dLbl = { d1: "-1d", d2: "-2d" };
 
     // ---- Formatting helpers ----
     const fmtDate = d => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -307,10 +327,11 @@
     const fmtNum = n => n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const fmtVol = n => n >= 1e6 ? (n/1e6).toFixed(2) + "M" : n.toLocaleString("en-US");
 
-    const dLbl = rows.length ? { d1: fmtDate(rows[0].d1), d2: fmtDate(rows[0].d2) } : { d1: "-1d", d2: "-2d" };
-
-    // ---- Column definitions (every column sortable) ----
-    const COLS = [
+    // ---- Column definitions (every column sortable); labels set in init() ----
+    let COLS = [];
+    function buildColumns() {
+      dLbl = rows.length ? { d1: fmtDate(rows[0].d1), d2: fmtDate(rows[0].d2) } : { d1: "-1d", d2: "-2d" };
+      COLS = [
       { key: "sym",    label: "Symbol",             type: "str", cls: "txt" },
       { key: "name",   label: "Company",            type: "str", cls: "txt" },
       { key: "up",     label: "Trend",              type: "num", cls: "center" },
@@ -319,7 +340,8 @@
       { key: "close0", label: "Close (Today)",      type: "num" },
       { key: "close1", label: "Close (" + dLbl.d1 + ")", type: "num" },
       { key: "close2", label: "Close (" + dLbl.d2 + ")", type: "num" }
-    ];
+      ];
+    }
 
     let sortKey = "volume";
     let sortDir = -1; // -1 desc, 1 asc
@@ -386,24 +408,62 @@
       }).join("");
     }
 
-    function renderStats() {
+    function renderStats(meta) {
       const el = document.getElementById("stats");
       const upCount = rows.filter(r => r.up).length;
       const cards = [
         { k: "Crossover signals", v: rows.length },
         { k: "Trending up", v: upCount },
         { k: "Trending down", v: rows.length - upCount },
-        { k: "As of", v: fmtDate(TODAY) }
+        { k: "As of", v: fmtDate(asOfDate) }
       ];
       el.innerHTML = cards.map(c => `<div class="stat"><div class="k">${c.k}</div><div class="v">${c.v}</div></div>`).join("");
+
+      const scanned = meta && meta.universe_scanned
+        ? " across " + meta.universe_scanned.toLocaleString("en-US") + " US-listed symbols" : "";
       document.getElementById("asof").textContent =
-        "Signals as of " + fmtFullDate(TODAY) + " · " + rows.length + " stock(s) where SMA-9 crossed above SMA-20 today.";
+        "Signals as of " + fmtFullDate(asOfDate) + " · " + rows.length +
+        " stock(s) where SMA-9 crossed above SMA-20" + scanned + ".";
+
+      const badge = document.getElementById("source");
+      if (badge) {
+        if (meta && meta.source === "live") {
+          badge.className = "badge";
+          badge.innerHTML = '<span class="dot"></span> Live daily scan';
+          badge.title = "Loaded from signals.json (generated " + (meta.generated_at || "") + ")";
+        } else {
+          badge.className = "badge sample";
+          badge.innerHTML = '<span class="dot" style="background:#f59e0b;box-shadow:0 0 10px #f59e0b"></span> Sample data';
+          badge.title = "signals.json not found yet — showing built-in sample until the first scan runs.";
+        }
+      }
     }
 
-    function render() { renderHead(); renderBody(); }
+    function render() { buildColumns(); renderHead(); renderBody(); }
 
-    renderStats();
-    render();
+    async function init() {
+      let meta = { source: "sample" };
+      try {
+        const resp = await fetch("./signals.json", { cache: "no-store" });
+        if (resp.ok) {
+          const json = await resp.json();
+          const live = rowsFromSignals(json);
+          rows = live;
+          meta = { source: "live", universe_scanned: json.universe_scanned, generated_at: json.generated_at };
+          asOfDate = json.as_of ? parseISO(json.as_of) : TODAY;
+        } else {
+          throw new Error("no signals.json (" + resp.status + ")");
+        }
+      } catch (e) {
+        rows = buildSampleRows();
+        asOfDate = TODAY;
+        meta = { source: "sample" };
+      }
+      renderStats(meta);
+      render();
+    }
+
+    init();
   })();
   </script>
 </body>

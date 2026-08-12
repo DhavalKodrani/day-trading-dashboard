@@ -1,0 +1,24 @@
+# Fallback ticker list -- used ONLY if both live universe sources
+# (NASDAQ Trader, then SEC EDGAR) fail, e.g. a CI network hiccup.
+# Normally the screener scans the full US-listed universe (~10k+ symbols).
+# One symbol per line, '#' for comments.
+AAPL
+MSFT
+NVDA
+AMD
+TSLA
+META
+AMZN
+GOOGL
+NFLX
+SHOP
+PLTR
+COIN
+SOFI
+INTC
+MU
+BAC
+F
+NIO
+SNAP
+UBER
