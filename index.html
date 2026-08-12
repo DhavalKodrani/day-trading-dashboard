@@ -109,6 +109,9 @@
     tbody tr:last-child td { border-bottom: none; }
     tbody tr:hover { background: rgba(108,140,255,.06); }
     td.sym { text-align: left; font-weight: 700; letter-spacing: .02em; }
+    td.sym a { color: var(--accent); text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
+    td.sym a:hover { text-decoration: underline; }
+    td.sym a .ext { font-size: 10px; opacity: .6; }
     td.name { text-align: left; color: var(--muted); font-weight: 400; }
     td.center { text-align: center; }
 
@@ -489,7 +492,7 @@
           [fmtDate(r.d2),   fmtVol(r.vol2)]
         ]);
         return `<tr>
-          <td class="sym"    data-label="Symbol">${r.sym}</td>
+          <td class="sym"    data-label="Symbol"><a href="https://www.tradingview.com/chart/?symbol=${encodeURIComponent(r.sym)}" target="_blank" rel="noopener" title="Open ${r.sym} on TradingView">${r.sym}<span class="ext">↗</span></a></td>
           <td class="name"   data-label="Company">${r.name}</td>
           <td class="center" data-label="Trend">${trend}</td>
           <td data-label="Close · 3-day">${closes}</td>
