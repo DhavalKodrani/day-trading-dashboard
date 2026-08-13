@@ -146,6 +146,14 @@
       display: flex; align-items: center; gap: 10px;
       margin: 0 2px 12px; flex-wrap: wrap;
     }
+    .toolbar .search {
+      flex: 1 1 240px; min-width: 180px; max-width: 380px;
+      background: var(--panel-2); color: var(--text);
+      border: 1px solid var(--border); border-radius: 10px;
+      padding: 9px 13px; font-size: 14px;
+    }
+    .toolbar .search::placeholder { color: var(--muted); }
+    .toolbar .search:focus { outline: none; border-color: var(--accent); }
     .toolbar .lbl { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
     .toolbar select {
       background: var(--panel-2); color: var(--text);
@@ -208,6 +216,7 @@
     <div class="stats" id="stats"></div>
 
     <div class="toolbar">
+      <input id="search" class="search" type="search" placeholder="Filter by symbol or company…" aria-label="Filter rows by symbol or company" autocomplete="off" />
       <span class="lbl">Sort</span>
       <select id="sortSel" aria-label="Sort column"></select>
       <button id="sortDir" class="dirbtn" title="Toggle sort direction" aria-label="Toggle sort direction">▼</button>
@@ -417,6 +426,7 @@
 
     let sortKey = "vol0"; // default: today's volume, high → low
     let sortDir = -1;     // -1 desc, 1 asc
+    let filterText = "";  // live text filter (symbol / company)
 
     function valueFor(row, col) {
       if (col.type === "date") return row[col.key].getTime();
@@ -460,7 +470,11 @@
     function renderBody() {
       const body = document.getElementById("body");
       const col = COLS.find(c => c.key === sortKey);
-      const sorted = rows.slice().sort((a, b) => {
+      const q = filterText.trim().toLowerCase();
+      const filtered = q
+        ? rows.filter(r => r.sym.toLowerCase().includes(q) || (r.name || "").toLowerCase().includes(q))
+        : rows;
+      const sorted = filtered.slice().sort((a, b) => {
         let va = valueFor(a, col), vb = valueFor(b, col);
         if (col.type === "str") { va = String(va).toLowerCase(); vb = String(vb).toLowerCase();
           return va < vb ? -sortDir : va > vb ? sortDir : 0; }
@@ -468,7 +482,10 @@
       });
 
       if (!sorted.length) {
-        body.innerHTML = `<tr><td class="empty" colspan="${COLS.length}">No bullish 9/20 SMA crossovers today.</td></tr>`;
+        const msg = q
+          ? `No matches for “${q}”. Clear the filter to see all ${rows.length} signal(s).`
+          : "No bullish 9/20 SMA crossovers today.";
+        body.innerHTML = `<tr><td class="empty" colspan="${COLS.length}">${msg}</td></tr>`;
         return;
       }
 
@@ -542,6 +559,10 @@
       });
       document.getElementById("sortDir").addEventListener("click", () => {
         sortDir *= -1; render();
+      });
+      document.getElementById("search").addEventListener("input", e => {
+        filterText = e.target.value;
+        renderBody();  // only the table body depends on the filter
       });
     }
 
