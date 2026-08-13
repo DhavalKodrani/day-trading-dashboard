@@ -154,7 +154,8 @@
     }
     .toolbar .search::placeholder { color: var(--muted); }
     .toolbar .search:focus { outline: none; border-color: var(--accent); }
-    .toolbar .lbl { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+    .toolbar .sortgroup { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
+    .toolbar .lbl { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
     .toolbar select {
       background: var(--panel-2); color: var(--text);
       border: 1px solid var(--border); border-radius: 10px;
@@ -171,6 +172,9 @@
     /* ----- Mobile: collapse the table into readable per-stock cards ----- */
     @media (max-width: 680px) {
       body { padding: 22px 12px 48px; }
+      .toolbar .search { flex: 1 1 100%; max-width: none; }   /* search on its own row */
+      .toolbar .sortgroup { flex: 1 1 100%; }                  /* sort controls together below */
+      .toolbar .sortgroup select { flex: 1; }
       .table-scroll { overflow: visible; }
       table { min-width: 0; width: 100%; }
       thead { display: none; }                 /* sort via the toolbar instead */
@@ -217,9 +221,11 @@
 
     <div class="toolbar">
       <input id="search" class="search" type="search" placeholder="Filter by symbol or company…" aria-label="Filter rows by symbol or company" autocomplete="off" />
-      <span class="lbl">Sort</span>
-      <select id="sortSel" aria-label="Sort column"></select>
-      <button id="sortDir" class="dirbtn" title="Toggle sort direction" aria-label="Toggle sort direction">▼</button>
+      <div class="sortgroup">
+        <span class="lbl">Sort</span>
+        <select id="sortSel" aria-label="Sort column"></select>
+        <button id="sortDir" class="dirbtn" title="Toggle sort direction" aria-label="Toggle sort direction">▼</button>
+      </div>
     </div>
 
     <div class="card">
@@ -424,8 +430,8 @@
       ];
     }
 
-    let sortKey = "vol0"; // default: today's volume, high → low
-    let sortDir = -1;     // -1 desc, 1 asc
+    let sortKey = "sym";  // default: stock ticker, A → Z
+    let sortDir = 1;      // -1 desc, 1 asc
     let filterText = "";  // live text filter (symbol / company)
 
     function valueFor(row, col) {
