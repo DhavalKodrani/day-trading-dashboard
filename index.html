@@ -112,6 +112,10 @@
     td.sym a { color: var(--accent); text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
     td.sym a:hover { text-decoration: underline; }
     td.sym a .ext { font-size: 10px; opacity: .6; }
+    /* Trend arrow shown next to the ticker on mobile (Trend column hidden there) */
+    .sym-trend { display: none; font-size: 12px; font-weight: 700; margin-right: 8px; }
+    .sym-trend.up { color: var(--up); }
+    .sym-trend.down { color: var(--down); }
     td.name { text-align: left; color: var(--muted); font-weight: 400; }
     td.center { text-align: center; }
 
@@ -133,8 +137,9 @@
     footer.note code { background: var(--panel-2); padding: 1px 6px; border-radius: 6px; }
     .empty { padding: 40px; text-align: center; color: var(--muted); }
 
-    /* Stacked 3-day cell (Close / Volume) */
+    /* 3-day cell (Close / Volume): today on top, prior two days grouped in .subs */
     .triple { display: inline-flex; flex-direction: column; gap: 3px; align-items: flex-end; }
+    .triple .subs { display: flex; flex-direction: column; gap: 3px; align-items: flex-end; }
     .triple .r { display: flex; gap: 12px; justify-content: flex-end; align-items: baseline; white-space: nowrap; }
     .triple .r .d { color: var(--muted); font-size: 11px; min-width: 46px; text-align: left; letter-spacing: .02em; }
     .triple .r.primary .v { font-weight: 700; font-size: 14px; }
@@ -203,6 +208,11 @@
       td.name { color: var(--muted); }
       td.center { justify-content: space-between; }
       .empty { display: block; }
+      /* Trend moves next to the ticker; its own row is hidden to save space */
+      .sym-trend { display: inline-block; }
+      .trendcell { display: none; }
+      /* Prior two days side-by-side (today stays on its own line above) */
+      .triple .subs { flex-direction: row; gap: 18px; }
     }
   </style>
 </head>
@@ -508,10 +518,11 @@
         return;
       }
 
-      // Stacked 3-day cell: today's value on top (bold), the two prior days below.
-      const triple = trio => `<div class="triple">` + trio.map((row, i) =>
-        `<div class="r ${i === 0 ? 'primary' : 'sub'}"><span class="d">${row[0]}</span><span class="v">${row[1]}</span></div>`
-      ).join("") + `</div>`;
+      // 3-day cell: today's value on top (bold); the two prior days sit in a
+      // group that stacks on desktop and goes side-by-side on mobile (saves space).
+      const one = (row, cls) => `<div class="r ${cls}"><span class="d">${row[0]}</span><span class="v">${row[1]}</span></div>`;
+      const triple = trio => `<div class="triple">${one(trio[0], "primary")}`
+        + `<div class="subs">${one(trio[1], "sub")}${one(trio[2], "sub")}</div></div>`;
 
       body.innerHTML = sorted.map(r => {
         const trend = r.up
@@ -527,10 +538,13 @@
           [fmtDate(r.d1),   fmtVol(r.vol1)],
           [fmtDate(r.d2),   fmtVol(r.vol2)]
         ]);
+        const symTrend = r.up
+          ? `<span class="sym-trend up" title="Trend up">▲</span>`
+          : `<span class="sym-trend down" title="Trend down">▼</span>`;
         return `<tr>
-          <td class="sym"    data-label="Symbol"><a href="https://www.tradingview.com/chart/?symbol=${encodeURIComponent(r.sym)}" target="_blank" rel="noopener" title="Open ${r.sym} on TradingView">${r.sym}<span class="ext">↗</span></a></td>
+          <td class="sym"    data-label="Symbol">${symTrend}<a href="https://www.tradingview.com/chart/?symbol=${encodeURIComponent(r.sym)}" target="_blank" rel="noopener" title="Open ${r.sym} on TradingView">${r.sym}<span class="ext">↗</span></a></td>
           <td class="name"   data-label="Company">${r.name}</td>
-          <td class="center" data-label="Trend">${trend}</td>
+          <td class="center trendcell" data-label="Trend">${trend}</td>
           <td data-label="Close · 3-day">${closes}</td>
           <td data-label="Volume · 3-day">${vols}</td>
         </tr>`;
