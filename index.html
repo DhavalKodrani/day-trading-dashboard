@@ -155,6 +155,8 @@
     .toolbar .search::placeholder { color: var(--muted); }
     .toolbar .search:focus { outline: none; border-color: var(--accent); }
     .toolbar .sortgroup { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
+    .toolbar .count { color: var(--muted); font-size: 13px; font-weight: 600; margin-left: auto; white-space: nowrap; }
+    .toolbar .count b { color: var(--text); }
     .toolbar .lbl { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
     .toolbar select {
       background: var(--panel-2); color: var(--text);
@@ -226,6 +228,7 @@
         <select id="sortSel" aria-label="Sort column"></select>
         <button id="sortDir" class="dirbtn" title="Toggle sort direction" aria-label="Toggle sort direction">▼</button>
       </div>
+      <span class="count" id="count" aria-live="polite"></span>
     </div>
 
     <div class="card">
@@ -480,6 +483,16 @@
       const filtered = q
         ? rows.filter(r => r.sym.toLowerCase().includes(q) || (r.name || "").toLowerCase().includes(q))
         : rows;
+
+      // Results count: filtered total when a filter is active, else the full total.
+      const noun = n => n === 1 ? "stock" : "stocks";
+      const countEl = document.getElementById("count");
+      if (countEl) {
+        countEl.innerHTML = q
+          ? `<b>${filtered.length}</b> of ${rows.length} ${noun(rows.length)}`
+          : `<b>${rows.length}</b> ${noun(rows.length)}`;
+      }
+
       const sorted = filtered.slice().sort((a, b) => {
         let va = valueFor(a, col), vb = valueFor(b, col);
         if (col.type === "str") { va = String(va).toLowerCase(); vb = String(vb).toLowerCase();
