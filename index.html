@@ -211,8 +211,18 @@
       /* Trend moves next to the ticker; its own row is hidden to save space */
       .sym-trend { display: inline-block; }
       .trendcell { display: none; }
-      /* Prior two days side-by-side (today stays on its own line above) */
-      .triple .subs { flex-direction: row; gap: 18px; }
+      /* Long company names wrap right-aligned instead of running off the card */
+      td.name { align-items: baseline; }
+      td.name span { flex: 1; min-width: 0; text-align: right; overflow-wrap: anywhere; }
+      /* Close/Volume 3-day: label + today on line 1, prior two days on a
+         full-width line 2 (side-by-side) so nothing overflows the card. */
+      td.cell3 { flex-wrap: wrap; align-items: baseline; row-gap: 5px; }
+      td.cell3::before { white-space: nowrap; }
+      td.cell3 .triple { display: contents; }
+      td.cell3 .triple .primary { margin-left: auto; }
+      td.cell3 .triple .subs {
+        flex-basis: 100%; flex-direction: row; justify-content: flex-end; gap: 18px;
+      }
     }
   </style>
 </head>
@@ -543,10 +553,10 @@
           : `<span class="sym-trend down" title="Trend down">▼</span>`;
         return `<tr>
           <td class="sym"    data-label="Symbol">${symTrend}<a href="https://www.tradingview.com/chart/?symbol=${encodeURIComponent(r.sym)}" target="_blank" rel="noopener" title="Open ${r.sym} on TradingView">${r.sym}<span class="ext">↗</span></a></td>
-          <td class="name"   data-label="Company">${r.name}</td>
+          <td class="name"   data-label="Company"><span>${r.name}</span></td>
           <td class="center trendcell" data-label="Trend">${trend}</td>
-          <td data-label="Close · 3-day">${closes}</td>
-          <td data-label="Volume · 3-day">${vols}</td>
+          <td class="cell3"  data-label="Close · 3-day">${closes}</td>
+          <td class="cell3"  data-label="Volume · 3-day">${vols}</td>
         </tr>`;
       }).join("");
     }
