@@ -235,8 +235,9 @@
     <p class="subtitle">
       Stocks where the <strong>9-day simple moving average crossed above the 20-day simple moving average today</strong>
       &mdash; a classic bullish "golden cross" day-trading signal. Each row shows the latest date, current volume,
-      and closing prices for the last three trading days. The trend arrow is <span style="color:var(--up)">green</span>
-      when momentum is up and <span style="color:var(--down)">red</span> when it turns down. Sort by any column using the control below (or the headers on wider screens).
+      and closing prices for the last three trading days. The trend arrow shows the price change across those
+      three sessions — <span style="color:var(--up)">green</span> if up, <span style="color:var(--down)">red</span> if down.
+      Sort by any column using the control below (or the headers on wider screens).
     </p>
 
     <div class="stats" id="stats"></div>
@@ -381,10 +382,11 @@
       return s9y <= s20y && s9t > s20t;
     }
 
-    // Trend for the arrow: sign of SMA9 slope over the last 3 sessions.
-    function trendUp(closes) {
+    // Trend = price momentum across the 3 shown sessions (today vs two days ago).
+    function trendChg(closes) {
       const last = closes.length - 1;
-      return sma(closes, 9, last) >= sma(closes, 9, last - 3);
+      const a = closes[last], b = closes[last - 2];
+      return b ? (a / b - 1) * 100 : 0;
     }
 
     // ---- Sample fallback: assemble rows for stocks that crossed up today ----
@@ -402,7 +404,7 @@
           close0: closes[last], close1: closes[last - 1], close2: closes[last - 2],
           vol0: volumes[last], vol1: volumes[last - 1], vol2: volumes[last - 2],
           d1: dates[last - 1], d2: dates[last - 2],
-          up: trendUp(closes)
+          up: trendChg(closes) >= 0, chg: trendChg(closes)
         });
       }
       return out;
@@ -421,7 +423,8 @@
         vol1: pick(s.vol1, s.volume),
         vol2: pick(s.vol2, s.volume),
         d1: parseISO(s.d1), d2: parseISO(s.d2),
-        up: !!s.up
+        up: !!s.up,
+        chg: pick(s.chg, s.close2 ? (s.close0 / s.close2 - 1) * 100 : 0)
       }));
     }
 
@@ -459,7 +462,7 @@
 
     function valueFor(row, col) {
       if (col.type === "date") return row[col.key].getTime();
-      if (col.key === "up") return row.up ? 1 : 0;
+      if (col.key === "up") return typeof row.chg === "number" ? row.chg : (row.up ? 1 : 0);
       return row[col.key];
     }
 
@@ -534,10 +537,13 @@
       const triple = trio => `<div class="triple">${one(trio[0], "primary")}`
         + `<div class="subs">${one(trio[1], "sub")}${one(trio[2], "sub")}</div></div>`;
 
+      // Trend = 3-day price change; show direction + magnitude, e.g. "▲ +2.5%".
+      const fmtPct = n => (n >= 0 ? "+" : "") + n.toFixed(1) + "%";
       body.innerHTML = sorted.map(r => {
+        const chg = typeof r.chg === "number" ? r.chg : 0;
         const trend = r.up
-          ? `<span class="trend up"><span class="glyph">▲</span> Up</span>`
-          : `<span class="trend down"><span class="glyph">▼</span> Down</span>`;
+          ? `<span class="trend up"><span class="glyph">▲</span> ${fmtPct(chg)}</span>`
+          : `<span class="trend down"><span class="glyph">▼</span> ${fmtPct(chg)}</span>`;
         const closes = triple([
           [fmtDate(r.date), "$" + fmtNum(r.close0)],
           [fmtDate(r.d1),   "$" + fmtNum(r.close1)],
@@ -549,8 +555,8 @@
           [fmtDate(r.d2),   fmtVol(r.vol2)]
         ]);
         const symTrend = r.up
-          ? `<span class="sym-trend up" title="Trend up">▲</span>`
-          : `<span class="sym-trend down" title="Trend down">▼</span>`;
+          ? `<span class="sym-trend up" title="3-day change">▲ ${fmtPct(chg)}</span>`
+          : `<span class="sym-trend down" title="3-day change">▼ ${fmtPct(chg)}</span>`;
         return `<tr>
           <td class="sym"    data-label="Symbol">${symTrend}<a href="https://www.tradingview.com/chart/?symbol=${encodeURIComponent(r.sym)}" target="_blank" rel="noopener" title="Open ${r.sym} on TradingView">${r.sym}<span class="ext">↗</span></a></td>
           <td class="name"   data-label="Company"><span>${r.name}</span></td>

@@ -171,9 +171,6 @@ def evaluate(df: pd.DataFrame, cfg: dict) -> Optional[dict]:
     if cfg["min_avg_volume"] and vol.tail(20).mean() < cfg["min_avg_volume"]:
         return None
 
-    lb = cfg["trend_lookback"]
-    trend_up = bool(ma_fast.iloc[-1] >= ma_fast.iloc[-1 - lb])
-
     last3 = df.tail(3)
     d = [ts.strftime("%Y-%m-%d") for ts in last3.index]
     c = [round(float(x), 2) for x in last3["Close"].tolist()]
@@ -182,12 +179,18 @@ def evaluate(df: pd.DataFrame, cfg: dict) -> Optional[dict]:
     if c[-1] <= 0 or any(pd.isna(x) for x in last3["Close"].tolist()):
         return None  # drop bad/thin data (zero or missing closes)
 
+    # Trend = actual price momentum across the three shown sessions (today vs two
+    # days ago), NOT the SMA-9 slope (which is up by construction after a cross).
+    chg = round((c[-1] / c[-3] - 1) * 100, 2) if c[-3] else 0.0
+    trend_up = c[-1] >= c[-3]
+
     return {
         "date": d[-1], "d1": d[-2], "d2": d[-3],
         "close0": c[-1], "close1": c[-2], "close2": c[-3],
         "vol0": v[-1], "vol1": v[-2], "vol2": v[-3],
         "volume": v[-1],   # kept for backward-compat (today's volume)
         "up": trend_up,
+        "chg": chg,        # % change over the 3-day window
     }
 
 
