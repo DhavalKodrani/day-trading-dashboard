@@ -47,8 +47,10 @@ CONFIG = {
     "batch_size": 120,            # tickers per yfinance download call
     "max_retries": 3,
     "retry_backoff_seconds": 5,
-    "min_price": 0.0,             # 0 = keep the full universe (no liquidity filter)
-    "min_avg_volume": 0,          # 0 = off
+    "min_price": 0.0,             # 0 = no price floor (keep the full universe)
+    # Data-integrity guards (NOT a liquidity filter): reject broken/untraded data.
+    "min_avg_volume": 1000,       # drop essentially-dead tickers (avg 20d shares)
+    "max_daily_move": 5.0,        # reject >400% single-day jumps as bad ticks
     "universe": {
         "nasdaq_listed_url": "https://ftp.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt",
         "other_listed_url": "https://ftp.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt",
@@ -178,6 +180,15 @@ def evaluate(df: pd.DataFrame, cfg: dict) -> Optional[dict]:
 
     if c[-1] <= 0 or any(pd.isna(x) for x in last3["Close"].tolist()):
         return None  # drop bad/thin data (zero or missing closes)
+
+    # --- Data-integrity guards (reject broken/untraded data, not illiquidity) ---
+    if v[-1] <= 0:
+        return None  # no real trade on the latest session -> no genuine "cross today"
+    mx = cfg.get("max_daily_move")
+    if mx and c[-2] and c[-3]:
+        ratios = [c[-1] / c[-2], c[-2] / c[-1], c[-1] / c[-3], c[-3] / c[-1]]
+        if max(ratios) > mx:
+            return None  # implausible jump between shown sessions -> bad tick
 
     # Trend = actual price momentum across the three shown sessions (today vs two
     # days ago), NOT the SMA-9 slope (which is up by construction after a cross).
